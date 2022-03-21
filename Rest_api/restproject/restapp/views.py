@@ -3,9 +3,11 @@ import json
 from django.http import JsonResponse
 import mysql.connector as mysql
 from django.http import HttpResponse
+import sys
+# sys.path is a list of absolute path strings
+sys.path.insert(0, '/home/anish_mohanan/Rest_api/restproject/restapp/models')
+from user import User
 
-
-# Create your views here.
 
 def user_data(request):
     if request.method == 'POST':
@@ -20,53 +22,28 @@ def user_data(request):
 
 
 def insert_data(insert_data):
-    db = mysql.connect(
-        host="localhost",
-        user="root",
-        password="",
-        database="rest_api"
-    )
-    cursor = db.cursor()
+    userDB = User()
 
     try:
-        insert_user_details = "INSERT INTO User_Details" \
-                              "(First_Name, Last_Name, Email, Password, Date_Of_Birth, Gender, mobile) " \
-                              "VALUES (%s, %s, %s, %s, %s, %s, %s)"
-        values = [insert_data["First_Name"], insert_data["Last_Name"], insert_data["Email"], insert_data["Password"],
-                  insert_data["Date_Of_Birth"], insert_data["Gender"],
-                  insert_data["mobile"]]
-        cursor.execute(insert_user_details, values)
+        userData = [insert_data["First_Name"], insert_data["Last_Name"], insert_data["Email"], insert_data["Password"],
+                     insert_data["Date_Of_Birth"], insert_data["Gender"],
+                     insert_data["mobile"]]
+        user_id = userDB.insert_user_data(userData)
 
-        user_id = cursor.lastrowid
-
-        insert_user_highest_qualification_details = "INSERT INTO User_Highest_Qualification_Details (user_id, " \
-                                                    "Highest_Qualification, Branch, Passout_month, Passout_year, " \
-                                                    "Marks_type, Marks, State ,Institute, University) VALUES (%s, %s, " \
-                                                    "%s, %s, %s, %s, %s, %s, %s, %s) "
         hq = insert_data["Highest_Qualification"][0]
 
-        values2 = [user_id, hq["hq"], hq["Branch"], hq["Passout_month"],
+        qualification_details = [user_id, hq["hq"], hq["Branch"], hq["Passout_month"],
                    hq["Passout_year"], hq["Marks_type"], hq["Marks"], hq["State"],
                    hq["Institute"], hq["University"]]
-        cursor.execute(insert_user_highest_qualification_details, values2)
+        userDB.insert_user_qualification(qualification_details)
 
-        insert_user_roles = "INSERT INTO User_Roles" \
-                            "(user_id,Roles) VALUES (%s, %s),(%s,%s),(%s,%s)"
+        roles_details = [user_id, insert_data["Roles"][0], user_id, insert_data["Roles"][1], user_id, insert_data["Roles"][2]]
+        userDB.inert_user_roles(roles_details)
 
-        values3 = [user_id, insert_data["Roles"][0], user_id, insert_data["Roles"][1], user_id, insert_data["Roles"][2]]
-        cursor.execute(insert_user_roles, values3)
-
-        insert_user_address_details = "INSERT INTO User_Address_Details" \
-                                      "(user_id, Address_for_communication, Pin_code, Current_Residing_city, " \
-                                      "Sub_Location)" \
-                                      " VALUES (%s, %s, %s, %s, %s)"
-        values4 = [user_id, insert_data["Address_for_communication"], insert_data["Pin_code"],
+        address_details = [user_id, insert_data["Address_for_communication"], insert_data["Pin_code"],
                    insert_data["Current_Residing_city"], insert_data["Sub_Location"]]
-        cursor.execute(insert_user_address_details, values4)
-
-        db.commit()
-        cursor.close()
-        db.close()
+        userDB.insert_user_address(address_details)
+        userDB.execute_and_close()
     except mysql.Error as err:
         nl = '\n'
         msg = f"Error is {err}. {nl}  Error Code: {err.errno} {nl} SQLSTATE: {err.sqlstate} {nl} Message: {err.msg} {nl}"
@@ -89,65 +66,14 @@ def get_details(request, user_id):
     cursor = db.cursor()
     try:
         user_id = user_id
-        user_query = """    SELECT
-                            User_Details.user_id, 
-                            User_Details.First_Name, 
-                            User_Details.Last_Name, 
-                            User_Details.Email, 
-                            User_Details.Date_Of_Birth, 
-                            User_Details.Gender, 
-                            User_Address_Details.Address_for_communication, 
-                            User_Address_Details.Pin_code, 
-                            City.city_Name,  
-                            Sub_Location.Location_Name, 
-                            User_Details.mobile 
-                            FROM User_Details  
-                            LEFT JOIN User_Address_Details
-                            ON User_Details.user_id = User_Address_Details.user_id
-                            LEFT JOIN City
-                            ON User_Address_Details.Current_Residing_city = City.id
-                            LEFT JOIN Sub_Location
-                            ON User_Address_Details.Sub_Location = Sub_Location.id
-                            WHERE User_Details.user_id= %s  """
+        userDb = User()
+        user_result = userDb.get_user(user_id)
 
-        education_query = """   SELECT 
-                                User_Highest_Qualification_Details.user_id,
-                                Course.Course_Name,
-                                Course.Course_type,
-                                Branch.Branch_Name,
-                                User_Highest_Qualification_Details.Passout_month,
-                                User_Highest_Qualification_Details.Passout_year,
-                                User_Highest_Qualification_Details.Marks_type,
-                                User_Highest_Qualification_Details.Marks,
-                                State.State_Name,
-                                Institute.Institute_Name,
-                                University.University_Name
-                                FROM User_Highest_Qualification_Details 
-                                LEFT JOIN Course ON User_Highest_Qualification_Details.Highest_Qualification = Course.id
-                                LEFT JOIN Branch ON User_Highest_Qualification_Details.Branch = Branch.id
-                                LEFT JOIN Institute ON User_Highest_Qualification_Details.Institute = Institute.id
-                                LEFT JOIN University ON User_Highest_Qualification_Details.University = University.id
-                                LEFT JOIN State ON User_Highest_Qualification_Details.State = State.id
-                                WHERE User_Highest_Qualification_Details.user_id= %s  """
-
-        roles_query = """   SELECT 
-                            User_Roles.user_id, 
-                            User_Roles.Roles,
-                            Roles.Roles_Name
-                            FROM User_Roles
-                            LEFT JOIN Roles
-                            ON User_Roles.Roles=Roles.id
-                            WHERE User_Roles.user_id= %s    """
-
-        cursor.execute(user_query, [user_id])
-        user_result = cursor.fetchall()
         if not user_result:
             return HttpResponse("User ID Not Found. Please enter a valid ID")
-
-        cursor.execute(education_query, [user_id])
-        education_result = cursor.fetchall()
-        cursor.execute(roles_query, [user_id])
-        roles_result = cursor.fetchall()
+        education_result = userDb.get_user_education(user_id)
+        roles_result = userDb.get_user_roles(user_id)
+        userDb.execute_and_close();
 
         # Convert query to objects of key-value pairs
         # objects_list = []
@@ -166,7 +92,6 @@ def get_details(request, user_id):
             d["mobile"] = row[10]
 
             d["Highest_Qualification"] = []
-
             d["Roles"] = []
 
         for row in education_result:
